@@ -8,6 +8,37 @@ const pct = (v, t) => (t ? `${Math.round((v / t) * 1000) / 10}%` : "0%");
 const fmtDate = (s) => (s ? new Date(`${String(s).slice(0, 10)}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–");
 const csvCell = (v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 
+const needsInfo = (it) => /^needs/i.test(String(it.detailsComplete || "").trim());
+const BOARD_URL = "https://vita-mojo-team.monday.com/boards/18432365825/pulses/";
+
+function downloadCsv(rows, name) {
+  const body = rows.map((r) => r.map(csvCell).join(",")).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["\uFEFF" + body], { type: "text/csv;charset=utf-8" }));
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+function exportNeedsInfo(items) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const rows = items.filter(needsInfo).map((i) => {
+    const gaps = i.detailsComplete.replace(/^needs:?\s*/i, "").split(",").map((x) => x.trim()).filter(Boolean);
+    const d = /^\d{4}-\d{2}-\d{2}/.test(i.installDate) ? new Date(`${i.installDate.slice(0, 10)}T00:00:00`) : null;
+    return { i, gaps, days: d ? Math.round((d - today) / 86400000) : null };
+  }).sort((a, b) => (a.days ?? 9999) - (b.days ?? 9999));
+  const head = ["Job", "Stage", "Booking status", "Confirmed install date", "Days to install", "Requested install date", "Date check", "What's missing", "No. of gaps", "Monday link"];
+  const out = [head, ...rows.map(({ i, gaps, days }) => [i.name, i.group, i.bookingStatus, i.installDate, days ?? "", i.requestedDate, i.dateCheck, gaps.join("; "), gaps.length, BOARD_URL + i.id])];
+  downloadCsv(out, `brain-needs-info-${new Date().toLocaleDateString("sv-SE")}.csv`);
+}
+
+function exportPdf() {
+  const prev = document.title;
+  document.title = `The Brain - Management Dashboard ${new Date().toLocaleDateString("sv-SE")}`;
+  const restore = () => { document.title = prev; window.removeEventListener("afterprint", restore); };
+  window.addEventListener("afterprint", restore);
+  window.print();
+}
+
 function Tile({ t, total, onOpen }) {
   const c = TILE_COLOR[t.key] || "#579bfc";
   if (t.value === null) {
@@ -246,6 +277,7 @@ export default function Home() {
   const missing = data ? Object.entries(data.columnsFound).filter(([k, v]) => !v && !["requestedDate", "detailsComplete"].includes(k) && !k.startsWith("kpi")).map(([k]) => k) : [];
   const row = (n) => m?.tiles.filter((t) => (t.row || 1) === n) || [];
   const total = data?.items.length || 0;
+  const needsCount = data ? data.items.filter(needsInfo).length : 0;
   const stamp = now.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const open = (v) => setView(v);
 
@@ -269,6 +301,14 @@ export default function Home() {
         </div>
       </header>
       <main className="main">
+        {m && (
+          <div className="actions">
+            <button className="act primary" onClick={() => exportNeedsInfo(data.items)} disabled={!data.columnsFound.detailsComplete || !needsCount} title="One CSV of every job with anything still missing, soonest install first">
+              ⬇ Download all records with missing info{data.columnsFound.detailsComplete ? ` (${needsCount})` : " — column not found"}
+            </button>
+            <button className="act" onClick={exportPdf}>⬇ Export dashboard to PDF</button>
+          </div>
+        )}
         {error && <div className="banner err">Couldn't load The Brain: {error}</div>}
         {missing.length > 0 && !error && <div className="banner warn">Couldn't auto-detect board columns for: {missing.join(", ")}. Open /api/brain-check to see the board's columns, then set the matching BRAIN_COL_… variable in Vercel.</div>}
         {!m && !error && <div className="grid g-hero">{[1, 2, 3, 4].map((i) => <div key={i} className="skeleton" />)}</div>}
@@ -306,7 +346,7 @@ export default function Home() {
             </div>
           </>
         )}
-        <p className="foot">{data ? `${data.boardName} · ${total} jobs · refreshes every 5 minutes` : ""}</p>
+        <p className="foot">{data ? `${data.boardName} · ${total} jobs · refreshes every 5 minutes · v3` : ""}</p>
       </main>
       {view && data && <Drawer view={view} items={data.items} onClose={() => setView(null)} />}
     </>
