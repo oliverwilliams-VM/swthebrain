@@ -167,7 +167,7 @@ export default function Home() {
   }, []);
 
   const m = useMemo(() => (data ? computeMetrics(data, now) : null), [data, now]);
-  const missing = data ? Object.entries(data.columnsFound).filter(([k, v]) => !v && !["requestedDate", "detailsComplete"].includes(k)).map(([k]) => k) : [];
+  const missing = data ? Object.entries(data.columnsFound).filter(([k, v]) => !v && !["requestedDate", "detailsComplete"].includes(k) && !k.startsWith("kpi")).map(([k]) => k) : [];
   const row = (n) => m?.tiles.filter((t) => (t.row || 1) === n) || [];
   const stamp = now.toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }).replace(" at ", " | ");
 
@@ -206,7 +206,7 @@ export default function Home() {
               <PieCard title="📅 Date check (Apex vs requested)" rows={m.checkRows} hole={0} />
             </div>
             <div className="grid g2">
-              <div className="panel"><h2>📗 Booking progress (share of jobs confirmed)</h2><Progress rows={m.statusRows} confirmedPct={m.confirmedPct} /></div>
+              <div className="panel"><h2>📗 Booking progress (share of jobs confirmed)</h2><Progress rows={m.progressRows} confirmedPct={m.confirmedPct} /></div>
               <PieCard title="⏱️ Apex SLA performance" rows={m.slaRows} />
             </div>
             <div className="grid g2">

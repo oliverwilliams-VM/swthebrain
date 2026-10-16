@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     const distinct = {};
     for (const key of Object.keys(d.columnsFound)) {
       const m = new Map();
-      d.items.forEach((i) => m.set(i[key] || "(empty)", (m.get(i[key] || "(empty)") || 0) + 1));
+      d.items.forEach((i) => { const val = (key.startsWith("kpi") ? i.kpi?.[key] : i[key]) || "(empty)"; m.set(val, (m.get(val) || 0) + 1); });
       distinct[key] = Object.fromEntries([...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40));
     }
     res.setHeader("Cache-Control", "no-store");
