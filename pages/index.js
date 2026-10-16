@@ -1,87 +1,121 @@
 import { useEffect, useMemo, useState } from "react";
 import Head from "next/head";
-import { computeMetrics } from "../lib/metrics";
+import { computeMetrics, colorFor } from "../lib/metrics";
 
+const TILE_COLOR = { total: "#579bfc", hist: "#0086c0", hold: "#fdab3d", live: "#00c875", n14: "#579bfc", conf: "#00c875", breach: "#e2445c", miss: "#fdab3d", agree: "#e2445c", await: "#fdab3d" };
 const MONTH_ONLY = (d) => d.toLocaleString("en-GB", { month: "long", year: "numeric" });
 const pct = (v, t) => (t ? `${Math.round((v / t) * 1000) / 10}%` : "0%");
+const fmtDate = (s) => (s ? new Date(`${String(s).slice(0, 10)}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–");
+const csvCell = (v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 
-function Tile({ t }) {
+function Tile({ t, total, onOpen }) {
+  const c = TILE_COLOR[t.key] || "#579bfc";
+  if (t.value === null) {
+    return <div className="tile na" style={{ "--c": "#555" }}><div className="tl"><span className="ti">{t.icon}</span>{t.label}</div><div className="tn">column not found</div></div>;
+  }
+  const hot = (t.tone === "bad" || t.tone === "warn") && t.value > 0;
   return (
-    <div className={`tile ${t.tone || ""}`}>
-      <div className="tl">{t.icon} {t.label}</div>
-      {t.value === null ? <div className="tn na">column not found</div> : <div className="tn">{t.value}</div>}
-    </div>
+    <button className={`tile ${hot ? "hot" : ""}`} style={{ "--c": c }} onClick={() => onOpen({ title: t.label, items: null, pick: t.pick })}>
+      <div className="tl"><span className="ti">{t.icon}</span>{t.label}</div>
+      <div className="tn">{t.value}</div>
+      <div className="tp">{t.key === "total" ? "all jobs on the board" : `${pct(t.value, total)} of jobs · click for list`}</div>
+    </button>
   );
 }
 
-function Legend({ rows }) {
-  const total = rows.reduce((a, r) => a + r.value, 0);
+function Legend({ rows, onOpen, hover, setHover, total }) {
   return (
     <div className="legend">
       {rows.map((r) => (
-        <span key={r.label}><i style={{ background: r.color }} />{r.label}: {pct(r.value, total)}</span>
+        <button key={r.label} className={`lg ${hover === r.label ? "on" : ""}`} onMouseEnter={() => setHover(r.label)} onMouseLeave={() => setHover(null)} onClick={() => r.pick && onOpen({ title: r.label, pick: r.pick })}>
+          <i style={{ background: r.color }} />{r.label}<b>{r.value}</b><em>{pct(r.value, total)}</em>
+        </button>
       ))}
     </div>
   );
 }
 
-function Donut({ rows, hole = 0.55, size = 220 }) {
-  const total = rows.reduce((a, r) => a + r.value, 0);
-  if (!total) return <div className="empty">No data</div>;
+function Donut({ rows, hole, size = 210, hover, setHover, onOpen, total }) {
   const R = size / 2, cx = R, cy = R;
   let a0 = -Math.PI / 2;
-  const arcs = rows.map((r) => {
+  const paths = rows.map((r) => {
     const a1 = a0 + (r.value / total) * Math.PI * 2;
     const full = r.value === total;
     const p = (a, rad) => [cx + rad * Math.cos(a), cy + rad * Math.sin(a)];
-    const [x0, y0] = p(a0, R - 2), [x1, y1] = p(a1 - 1e-4, R - 2);
-    const [x2, y2] = p(a1 - 1e-4, R * hole), [x3, y3] = p(a0, R * hole);
+    const gap = rows.length > 1 ? 0.012 : 0;
+    const [x0, y0] = p(a0 + gap, R - 3), [x1, y1] = p(a1 - gap, R - 3);
+    const [x2, y2] = p(a1 - gap, R * hole), [x3, y3] = p(a0 + gap, R * hole);
     const large = a1 - a0 > Math.PI ? 1 : 0;
-    const d = full
-      ? `M ${cx} ${cy - R + 2} A ${R - 2} ${R - 2} 0 1 1 ${cx - 0.01} ${cy - R + 2} Z`
-      : hole > 0
-      ? `M ${x0} ${y0} A ${R - 2} ${R - 2} 0 ${large} 1 ${x1} ${y1} L ${x2} ${y2} A ${R * hole} ${R * hole} 0 ${large} 0 ${x3} ${y3} Z`
-      : `M ${cx} ${cy} L ${x0} ${y0} A ${R - 2} ${R - 2} 0 ${large} 1 ${x1} ${y1} Z`;
+    let d;
+    if (full) d = hole > 0
+      ? `M ${cx} ${cy - R + 3} A ${R - 3} ${R - 3} 0 1 1 ${cx - 0.01} ${cy - R + 3} L ${cx - 0.01} ${cy - R * hole} A ${R * hole} ${R * hole} 0 1 0 ${cx} ${cy - R * hole} Z`
+      : `M ${cx} ${cy - R + 3} A ${R - 3} ${R - 3} 0 1 1 ${cx - 0.01} ${cy - R + 3} Z`;
+    else d = hole > 0
+      ? `M ${x0} ${y0} A ${R - 3} ${R - 3} 0 ${large} 1 ${x1} ${y1} L ${x2} ${y2} A ${R * hole} ${R * hole} 0 ${large} 0 ${x3} ${y3} Z`
+      : `M ${cx} ${cy} L ${x0} ${y0} A ${R - 3} ${R - 3} 0 ${large} 1 ${x1} ${y1} Z`;
     a0 = a1;
-    return <path key={r.label} d={d} fill={r.color}><title>{`${r.label}: ${r.value}`}</title></path>;
+    return <path key={r.label} d={d} fill={r.color} className={hover === r.label ? "on" : ""} onMouseEnter={() => setHover(r.label)} onMouseLeave={() => setHover(null)} onClick={() => r.pick && onOpen({ title: r.label, pick: r.pick })}><title>{`${r.label}: ${r.value} (${pct(r.value, total)})`}</title></path>;
   });
-  return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ maxWidth: "100%" }}>{arcs}</svg>;
+  const hv = rows.find((r) => r.label === hover);
+  return (
+    <svg className={`donut ${hover ? "dim" : ""}`} width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ maxWidth: "100%" }}>
+      {paths}
+      {hole > 0 && (
+        <g textAnchor="middle" pointerEvents="none">
+          <text x={cx} y={cy + 4} fill="#f2f4f6" fontSize="28" fontWeight="700">{hv ? hv.value : total}</text>
+          <text x={cx} y={cy + 24} fill="#97a1ad" fontSize="11">{hv ? pct(hv.value, total) : "total"}</text>
+        </g>
+      )}
+    </svg>
+  );
 }
 
-function PieCard({ title, rows, hole }) {
+function PieCard({ title, rows, hole = 0, onOpen, note }) {
+  const [hover, setHover] = useState(null);
+  const total = rows.reduce((a, r) => a + r.value, 0);
   return (
     <div className="panel">
-      <h2>{title}</h2>
-      {rows.length ? (
-        <div className="chart-row"><Donut rows={rows} hole={hole} /><Legend rows={rows} /></div>
+      <h3>{title}{note && <small>{note}</small>}</h3>
+      {total ? (
+        <div className="chart-row">
+          <Donut rows={rows} hole={hole} hover={hover} setHover={setHover} onOpen={onOpen} total={total} />
+          <Legend rows={rows} onOpen={onOpen} hover={hover} setHover={setHover} total={total} />
+        </div>
       ) : <div className="empty">No data (column not found or empty)</div>}
     </div>
   );
 }
 
-function Bars({ rows, height = 260, color = "#579bfc", W = 900 }) {
+function wrap(label, n = 22) {
+  const words = label.split(" "); const lines = []; let cur = "";
+  words.forEach((w) => { if ((cur + " " + w).trim().length > n && cur) { lines.push(cur); cur = w; } else cur = (cur + " " + w).trim(); });
+  if (cur) lines.push(cur);
+  return lines.length > 3 ? [...lines.slice(0, 2), lines.slice(2).join(" ").slice(0, n - 1) + "…"] : lines;
+}
+
+function Bars({ rows, height = 280, W = 900, color = "#579bfc", onOpen }) {
   if (!rows.length) return <div className="empty">No data</div>;
-  const padL = 40, padB = 46, padT = 24;
+  const padL = 34, padB = 62, padT = 26;
   const max = Math.max(...rows.map((r) => r.value));
-  const step = max <= 10 ? 2 : max <= 30 ? 10 : max <= 60 ? 20 : Math.ceil(max / 4 / 10) * 10;
+  const step = max <= 8 ? 2 : max <= 20 ? 5 : max <= 50 ? 10 : max <= 100 ? 20 : 50;
   const top = Math.ceil(max / step) * step || step;
-  const bw = Math.min(120, (W - padL) / rows.length - 40);
   const slot = (W - padL) / rows.length;
+  const bw = Math.min(110, slot - 36);
   const y = (v) => padT + (height - padT - padB) * (1 - v / top);
   const ticks = []; for (let v = 0; v <= top; v += step) ticks.push(v);
   return (
     <svg viewBox={`0 0 ${W} ${height}`} width="100%" style={{ display: "block" }}>
       {ticks.map((v) => (
-        <g key={v}><line x1={padL} x2={W} y1={y(v)} y2={y(v)} stroke="#262b31" /><text x={padL - 8} y={y(v) + 4} fill="#99a2ab" fontSize="11" textAnchor="end">{v}</text></g>
+        <g key={v}><line x1={padL} x2={W} y1={y(v)} y2={y(v)} stroke="#232932" strokeDasharray={v ? "3 4" : ""} /><text x={padL - 8} y={y(v) + 4} fill="#67717d" fontSize="11" textAnchor="end">{v}</text></g>
       ))}
       {rows.map((r, i) => {
         const cx = padL + slot * i + slot / 2;
-        const label = r.label.length > 34 ? r.label.slice(0, 33) + "…" : r.label;
+        const h = Math.max(2, y(0) - y(r.value));
         return (
-          <g key={r.label}>
-            <rect x={cx - bw / 2} y={y(r.value)} width={bw} height={y(0) - y(r.value)} fill={r.color || color} rx="2"><title>{`${r.label}: ${r.value}`}</title></rect>
-            <text x={cx} y={y(r.value) - 6} fill="#f2f4f6" fontSize="12" fontWeight="700" textAnchor="middle">{r.value}</text>
-            <text x={cx} y={height - padB + 16} fill="#99a2ab" fontSize="10.5" textAnchor="middle">{label}</text>
+          <g key={r.label} className="bar" onClick={() => r.pick && onOpen({ title: r.label, pick: r.pick })}>
+            <rect x={cx - bw / 2} y={y(0) - h} width={bw} height={h} fill={r.color || color} rx="5"><title>{`${r.label}: ${r.value}`}</title></rect>
+            <text x={cx} y={y(0) - h - 8} fill="#f2f4f6" fontSize="13" fontWeight="700" textAnchor="middle">{r.value}</text>
+            <text x={cx} y={height - padB + 17} fill="#97a1ad" fontSize="11" textAnchor="middle">{wrap(r.label).map((l, j) => <tspan key={j} x={cx} dy={j ? 13 : 0}>{l}</tspan>)}</text>
           </g>
         );
       })}
@@ -89,29 +123,26 @@ function Bars({ rows, height = 260, color = "#579bfc", W = 900 }) {
   );
 }
 
-function Progress({ rows, confirmedPct }) {
+function Progress({ rows, confirmedPct, onOpen }) {
   const total = rows.reduce((a, r) => a + r.value, 0);
   if (!total) return <div className="empty">No data</div>;
   return (
     <>
-      <div className="chart-row" style={{ flexWrap: "nowrap" }}>
-        <div style={{ display: "flex", height: 96, flex: 1, borderRadius: 6, overflow: "hidden", background: "#2a2f36" }}>
-          {rows.map((r) => <div key={r.label} title={`${r.label}: ${r.value}`} style={{ width: `${(r.value / total) * 100}%`, background: r.color }} />)}
+      <div className="chart-row" style={{ flexWrap: "nowrap", justifyContent: "stretch", gap: "1.2rem" }}>
+        <div className="pct-big">{confirmedPct}%<small>confirmed</small></div>
+        <div className="stack">
+          {rows.map((r) => <div key={r.label} title={`${r.label}: ${r.value}`} onClick={() => r.pick && onOpen({ title: r.label, pick: r.pick })} style={{ width: `${(r.value / total) * 100}%`, background: r.color }} />)}
         </div>
-        <div style={{ fontSize: "0.85rem", whiteSpace: "nowrap" }}>{confirmedPct}% Confirmed</div>
       </div>
-      <div className="legend" style={{ marginTop: "0.8rem", justifyContent: "center", gridTemplateColumns: "repeat(auto-fit, minmax(110px, auto))" }}>
-        {rows.map((r) => <span key={r.label}><i style={{ background: r.color }} />{r.label}</span>)}
-      </div>
+      <div className="cal-legend" style={{ marginTop: "1rem" }}>{rows.map((r) => <span key={r.label}><i style={{ background: r.color }} />{r.label} · {r.value}</span>)}</div>
     </>
   );
 }
 
-function Calendar({ events, groups }) {
+function Calendar({ events, groups, onOpen, items }) {
   const [cursor, setCursor] = useState(() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
-  const first = new Date(cursor);
-  const offset = (first.getDay() + 6) % 7; // Monday first
-  const start = new Date(first.getFullYear(), first.getMonth(), 1 - offset);
+  const offset = (cursor.getDay() + 6) % 7;
+  const start = new Date(cursor.getFullYear(), cursor.getMonth(), 1 - offset);
   const todayK = new Date().toLocaleDateString("sv-SE");
   const cells = [];
   for (let i = 0; i < 42; i++) {
@@ -123,22 +154,66 @@ function Calendar({ events, groups }) {
   const shift = (n) => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + n, 1));
   return (
     <div className="panel">
-      <div className="cal-head">
-        <h2>🗓️ Install calendar</h2>
-        <div><span className="stamp">{MONTH_ONLY(cursor)}</span><button onClick={() => shift(-1)}>‹</button><button onClick={() => { const n = new Date(); setCursor(new Date(n.getFullYear(), n.getMonth(), 1)); }}>Today</button><button onClick={() => shift(1)}>›</button></div>
-      </div>
+      <h3>🗓️ Install calendar<span className="cal-nav"><span>{MONTH_ONLY(cursor)}</span><button className="btn" onClick={() => shift(-1)}>‹</button><button className="btn" onClick={() => { const n = new Date(); setCursor(new Date(n.getFullYear(), n.getMonth(), 1)); }}>Today</button><button className="btn" onClick={() => shift(1)}>›</button></span></h3>
       <div className="cal">
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((x) => <div key={x} className="dow">{x}</div>)}
         {cells.map((c) => (
-          <div key={c.k} className={`${c.out ? "out" : ""} ${c.k === todayK ? "today" : ""}`}>
+          <button key={c.k} className={`cell ${c.out ? "out" : ""} ${c.k === todayK ? "today" : ""}`} onClick={() => c.ev.length && onOpen({ title: `Installs on ${fmtDate(c.k)}`, pick: (it) => String(it.installDate).slice(0, 10) === c.k })}>
             <div className="dn"><span>{String(c.d.getDate()).padStart(2, "0")}</span></div>
             {c.ev.slice(0, 2).map((e) => <div key={e.id} className="chip" style={{ background: e.color }} title={`${e.name} (${e.group})`}>{e.name}</div>)}
-            {c.ev.length > 2 && <div className="more" title={c.ev.slice(2).map((e) => e.name).join("\n")}>+{c.ev.length - 2} more</div>}
-          </div>
+            {c.ev.length > 2 && <div className="more">+{c.ev.length - 2} more</div>}
+          </button>
         ))}
       </div>
       <div className="cal-legend">{groups.map((g) => <span key={g.id}><i style={{ background: g.color }} />{g.title}</span>)}</div>
     </div>
+  );
+}
+
+function Drawer({ view, items, onClose }) {
+  const [q, setQ] = useState("");
+  useEffect(() => { const h = (e) => e.key === "Escape" && onClose(); window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [onClose]);
+  const rows = useMemo(() => {
+    const base = items.filter(view.pick);
+    const t = q.trim().toLowerCase();
+    return t ? base.filter((i) => `${i.name} ${i.group} ${i.bookingStatus} ${i.detailsComplete}`.toLowerCase().includes(t)) : base;
+  }, [items, view, q]);
+  const exportCsv = () => {
+    const head = ["Job", "Stage", "Booking status", "Confirmed install date", "Date check", "SLA", "What's missing"];
+    const lines = [head, ...rows.map((i) => [i.name, i.group, i.bookingStatus, i.installDate, i.dateCheck, i.sla, i.detailsComplete])].map((r) => r.map(csvCell).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([lines], { type: "text/csv" }));
+    a.download = `brain-${view.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.csv`;
+    a.click();
+  };
+  return (
+    <>
+      <div className="scrim" onClick={onClose} />
+      <aside className="drawer" role="dialog" aria-label={view.title}>
+        <header>
+          <div style={{ flex: 1 }}><h4>{view.title}</h4><p>{rows.length} job{rows.length === 1 ? "" : "s"}</p></div>
+          <button className="btn" onClick={onClose}>Close ✕</button>
+        </header>
+        <div className="tools"><input autoFocus placeholder="Search jobs…" value={q} onChange={(e) => setQ(e.target.value)} /><button className="btn" onClick={exportCsv} disabled={!rows.length}>Export CSV</button></div>
+        <div className="list">
+          <table>
+            <thead><tr><th>Job</th><th>Stage</th><th>Booking</th><th>Install date</th><th>Date check</th></tr></thead>
+            <tbody>
+              {rows.map((i) => (
+                <tr key={i.id}>
+                  <td><b>{i.name}</b>{/^needs/i.test(i.detailsComplete) && <div className="miss">{i.detailsComplete}</div>}</td>
+                  <td>{i.group}</td>
+                  <td>{i.bookingStatus ? <span className="pill" style={{ borderColor: colorFor(i.bookingStatus) }}>{i.bookingStatus}</span> : "–"}</td>
+                  <td>{fmtDate(i.installDate)}</td>
+                  <td>{i.dateCheck || "–"}</td>
+                </tr>
+              ))}
+              {!rows.length && <tr><td colSpan="5" className="empty">Nothing matches.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -147,6 +222,7 @@ export default function Home() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
+  const [view, setView] = useState(null);
 
   const load = (bust = false) => {
     setLoading(true);
@@ -169,7 +245,9 @@ export default function Home() {
   const m = useMemo(() => (data ? computeMetrics(data, now) : null), [data, now]);
   const missing = data ? Object.entries(data.columnsFound).filter(([k, v]) => !v && !["requestedDate", "detailsComplete"].includes(k) && !k.startsWith("kpi")).map(([k]) => k) : [];
   const row = (n) => m?.tiles.filter((t) => (t.row || 1) === n) || [];
-  const stamp = now.toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }).replace(" at ", " | ");
+  const total = data?.items.length || 0;
+  const stamp = now.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const open = (v) => setView(v);
 
   return (
     <>
@@ -178,46 +256,59 @@ export default function Home() {
         <div className="topbar-inner">
           <div className="brand">
             <img src="/Subway.png" alt="Subway" className="logo" />
-            <div><h1>🧠 The Brain – Management Dashboard</h1><p className="sub">{data ? `${data.boardName} · updated ${stamp}` : "Loading…"}</p></div>
+            <div className="divider" />
+            <div>
+              <h1>🧠 The Brain – Management Dashboard</h1>
+              <p className="sub"><span className={`dot ${error ? "off" : ""}`} />{error ? "Update failed" : data ? `Live from Monday · updated ${stamp}` : "Loading…"}</p>
+            </div>
           </div>
           <div className="controls">
-            <button onClick={() => load(true)} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+            <button className="btn" onClick={() => load(true)} disabled={loading}>{loading ? "Refreshing…" : "↻ Refresh"}</button>
             <img src="/Vita Mojo_Primary_Dark.png" alt="Vita Mojo" className="logo vm" />
           </div>
         </div>
       </header>
       <main className="main">
-        {error && <div className="error">Couldn't load The Brain: {error}</div>}
-        {missing.length > 0 && !error && (
-          <div className="placing placing-warn">Couldn't auto-detect board columns for: {missing.join(", ")}. Open /api/brain-check to see the board's columns, then set the matching BRAIN_COL_… variable in Vercel (see README).</div>
-        )}
+        {error && <div className="banner err">Couldn't load The Brain: {error}</div>}
+        {missing.length > 0 && !error && <div className="banner warn">Couldn't auto-detect board columns for: {missing.join(", ")}. Open /api/brain-check to see the board's columns, then set the matching BRAIN_COL_… variable in Vercel.</div>}
+        {!m && !error && <div className="grid g-hero">{[1, 2, 3, 4].map((i) => <div key={i} className="skeleton" />)}</div>}
         {m && (
           <>
-            <div className="grid g4">{row(1).map((t) => <Tile key={t.key} t={t} />)}</div>
-            <div className="grid g3">{row(2).map((t) => <Tile key={t.key} t={t} />)}</div>
-            <div className="grid g3">{row(3).map((t) => <Tile key={t.key} t={t} />)}</div>
-            <div className="grid"><div className="panel"><h2>📊 Pipeline by stage</h2><Bars rows={m.pipeline} height={300} /></div></div>
+            <div className="section"><h2>Overview</h2><span>click any card or chart for the jobs behind it</span></div>
+            <div className="grid g-hero">{row(1).map((t) => <Tile key={t.key} t={t} total={total} onOpen={open} />)}</div>
+
+            <div className="section"><h2>Installs &amp; Apex actions</h2></div>
+            <div className="grid g-apex">{[...row(2), ...row(3)].map((t) => <Tile key={t.key} t={t} total={total} onOpen={open} />)}</div>
+
+            <div className="section"><h2>Pipeline</h2></div>
+            <div className="panel"><h3>📊 Pipeline by stage<small>jobs per board group</small></h3><Bars rows={m.pipeline} height={300} onOpen={open} /></div>
+
+            <div className="section"><h2>Booking &amp; dates</h2></div>
             <div className="grid g2">
-              <div className="panel"><h2>📈 Confirmed installs by month</h2><Bars rows={m.months} W={520} height={250} /></div>
-              <PieCard title="🍩 Apex booking status" rows={m.statusRows} />
+              <div className="panel"><h3>📈 Confirmed installs by month</h3><Bars rows={m.months} W={520} height={270} onOpen={open} /></div>
+              <PieCard title="🍩 Apex booking status" rows={m.statusRows} hole={0.58} onOpen={open} />
             </div>
-            <div className="grid g2">
-              <PieCard title="⏸️ Hold reasons" rows={m.holdRows} hole={0} />
-              <PieCard title="📅 Date check (Apex vs requested)" rows={m.checkRows} hole={0} />
+            <div className="grid g2" style={{ marginTop: "0.8rem" }}>
+              <div className="panel"><h3>📗 Booking progress<small>share of all jobs</small></h3><Progress rows={m.progressRows} confirmedPct={m.confirmedPct} onOpen={open} /></div>
+              <PieCard title="📅 Date check (Apex vs requested)" rows={m.checkRows} hole={0.58} onOpen={open} />
             </div>
+
+            <div className="section"><h2>Health</h2></div>
             <div className="grid g2">
-              <div className="panel"><h2>📗 Booking progress (share of jobs confirmed)</h2><Progress rows={m.progressRows} confirmedPct={m.confirmedPct} /></div>
-              <PieCard title="⏱️ Apex SLA performance" rows={m.slaRows} />
+              <PieCard title="⏱️ Apex SLA performance" rows={m.slaRows} hole={0.58} onOpen={open} />
+              <PieCard title="⏸️ Hold reasons" rows={m.holdRows} hole={0.58} onOpen={open} />
             </div>
+
+            <div className="section"><h2>Source &amp; schedule</h2></div>
             <div className="grid g2">
-              <PieCard title="🧭 Request source (live vs historical)" rows={m.sourceRows} hole={0} />
-              <Calendar events={m.events} groups={data.groups} />
+              <PieCard title="🧭 Request source" rows={m.sourceRows} hole={0.58} onOpen={open} note="live vs historical" />
+              <Calendar events={m.events} groups={data.groups} onOpen={open} items={data.items} />
             </div>
           </>
         )}
-        {!m && !error && <p className="foot">Loading board…</p>}
-        <p className="foot">Data from Monday board {data?.boardName || ""}. Refreshes every 5 minutes.</p>
+        <p className="foot">{data ? `${data.boardName} · ${total} jobs · refreshes every 5 minutes` : ""}</p>
       </main>
+      {view && data && <Drawer view={view} items={data.items} onClose={() => setView(null)} />}
     </>
   );
 }

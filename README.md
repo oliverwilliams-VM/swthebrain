@@ -26,5 +26,5 @@ values found. If one is wrong, set the Vercel env var to the column ID (and rede
 Rules derived from the Monday screenshot: Pipeline by stage = board groups; On hold = items in a
 group with "hold" in its name; Dates to agree = Date check "Differs"; SLA breached = SLA contains "breach".
 Inferred (check against Monday): "Apex awaiting response" = status Date Proposed or Reviewing (not on hold);
-"Installs ≤14 days, details missing" = install in next 14 days and not Confirmed, unless a details column exists.
+Tiles read the board's KPI formula columns, so their logic lives in Monday.
 Board ID can be changed with `BRAIN_BOARD_ID`.
