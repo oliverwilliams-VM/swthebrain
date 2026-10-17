@@ -28,3 +28,9 @@ group with "hold" in its name; Dates to agree = Date check "Differs"; SLA breach
 Inferred (check against Monday): "Apex awaiting response" = status Date Proposed or Reviewing (not on hold);
 Tiles read the board's KPI formula columns, so their logic lives in Monday.
 Board ID can be changed with `BRAIN_BOARD_ID`.
+
+## Installs completed before The Brain went live
+Read from the Sign Up -> Ready to Go board (5678025992): Install Phase = "Live" and Install Date in the
+current month (override with BRAIN_PRELIVE_MONTH=2026-10). Sites already on the Brain board (matched on the
+site number in the item name) are excluded. /api/brain-check shows the columns used and the counts.
+Optional overrides: BRAIN_SIGNUP_PHASE_COL, BRAIN_SIGNUP_DATE_COL, BRAIN_SIGNUP_COUNTRY_COL, BRAIN_SIGNUP_BOARD_ID.

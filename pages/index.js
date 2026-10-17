@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import Head from "next/head";
 import { computeMetrics, colorFor } from "../lib/metrics";
 
-const TILE_COLOR = { total: "#579bfc", hist: "#0086c0", hold: "#fdab3d", live: "#00c875", n14: "#579bfc", conf: "#00c875", breach: "#e2445c", miss: "#fdab3d", agree: "#e2445c", await: "#fdab3d" };
+const TILE_COLOR = { instBrain: "#00c875", instPre: "#579bfc", instTotal: "#00c875",  total: "#579bfc", hist: "#0086c0", hold: "#fdab3d", live: "#00c875", n14: "#579bfc", conf: "#00c875", breach: "#e2445c", miss: "#fdab3d", agree: "#e2445c", await: "#fdab3d" };
 const MONTH_ONLY = (d) => d.toLocaleString("en-GB", { month: "long", year: "numeric" });
 const pct = (v, t) => (t ? `${Math.round((v / t) * 1000) / 10}%` : "0%");
 const fmtDate = (s) => (s ? new Date(`${String(s).slice(0, 10)}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–");
@@ -44,14 +44,14 @@ function exportPdf() {
 function Tile({ t, total, onOpen }) {
   const c = TILE_COLOR[t.key] || "#579bfc";
   if (t.value === null) {
-    return <div className="tile na" style={{ "--c": "#555" }}><div className="tl"><span className="ti">{t.icon}</span>{t.label}</div><div className="tn">column not found</div></div>;
+    return <div className="tile na" style={{ "--c": "#555" }}><div className="tl"><span className="ti">{t.icon}</span>{t.label}</div><div className="tn">{t.naText || "column not found"}</div></div>;
   }
   const hot = (t.tone === "bad" || t.tone === "warn") && t.value > 0;
   return (
-    <button className={`tile ${hot ? "hot" : ""}`} style={{ "--c": c }} onClick={() => onOpen({ title: t.label, items: null, pick: t.pick })}>
+    <button className={`tile ${hot ? "hot" : ""}`} style={{ "--c": c }} onClick={() => onOpen({ title: t.label, items: t.items || null, pick: t.pick })}>
       <div className="tl"><span className="ti">{t.icon}</span>{t.label}</div>
       <div className="tn">{t.value}</div>
-      <div className="tp">{t.key === "total" ? "all jobs on the board" : `${pct(t.value, total)} of jobs · click for list`}</div>
+      <div className="tp">{t.sub ?? (t.key === "total" ? "all jobs on the board" : `${pct(t.value, total)} of jobs · click for list`)}</div>
     </button>
   );
 }
@@ -207,7 +207,7 @@ function Drawer({ view, items, onClose }) {
   const [q, setQ] = useState("");
   useEffect(() => { const h = (e) => e.key === "Escape" && onClose(); window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [onClose]);
   const rows = useMemo(() => {
-    const base = items.filter(view.pick);
+    const base = (view.items || items).filter(view.pick);
     const t = q.trim().toLowerCase();
     return t ? base.filter((i) => `${i.name} ${i.group} ${i.bookingStatus} ${i.detailsComplete}`.toLowerCase().includes(t)) : base;
   }, [items, view, q]);
@@ -283,6 +283,22 @@ export default function Home() {
   const stamp = now.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const open = (v) => setView(v);
 
+  const monthName = now.toLocaleString("en-GB", { month: "long", year: "numeric" });
+  const doneTiles = useMemo(() => {
+    if (!data) return [];
+    const brainDone = data.items.filter((it) => /installed/i.test(it.group) && it.group.toLowerCase().includes(monthName.toLowerCase()));
+    const pre = data.preBrain;
+    const preItems = (pre?.items || []).map((i) => ({ id: `pre-${i.id}`, name: i.name, group: `Sign Up board · Live${i.country ? ` · ${i.country}` : ""}`, groupId: "pre", bookingStatus: "", installDate: i.installDate, dateCheck: "", sla: "", detailsComplete: "", requestedDate: "" }));
+    const all = [...brainDone, ...preItems];
+    return [
+      { key: "instBrain", icon: "🧠", label: "Installed via The Brain", value: brainDone.length, sub: `in the "Installed – ${monthName}" group · click for list`, pick: (it) => brainDone.includes(it) },
+      pre?.error
+        ? { key: "instPre", icon: "🗂️", label: "Installed before The Brain", value: null, naText: "couldn't read Sign Up board", pick: () => false }
+        : { key: "instPre", icon: "🗂️", label: "Installed before The Brain", value: preItems.length, sub: `Sign Up board: Live, installed in ${monthName}${pre?.alreadyOnBrain ? ` (${pre.alreadyOnBrain} already on The Brain not counted)` : ""}`, items: preItems, pick: () => true },
+      { key: "instTotal", icon: "✅", label: `Total installed in ${now.toLocaleString("en-GB", { month: "long" })}`, value: all.length, sub: "The Brain + pre-Brain installs · click for list", items: all, pick: () => true, tone: null },
+    ];
+  }, [data, monthName]);
+
   return (
     <>
       <Head><title>The Brain – Management Dashboard</title><meta name="viewport" content="width=device-width, initial-scale=1" /></Head>
@@ -322,6 +338,9 @@ export default function Home() {
             <div className="section"><h2>Installs &amp; Apex actions</h2></div>
             <div className="grid g-apex">{[...row(2), ...row(3)].map((t) => <Tile key={t.key} t={t} total={total} onOpen={open} />)}</div>
 
+            <div className="section"><h2>Completed installs · {monthName}</h2><span>includes sites installed before The Brain went live</span></div>
+            <div className="grid g-apex">{doneTiles.map((t) => <Tile key={t.key} t={t} total={total} onOpen={open} />)}</div>
+
             <div className="section"><h2>Pipeline</h2></div>
             <div className="panel"><h3>📊 Pipeline by stage<small>jobs per board group</small></h3><Bars rows={m.pipeline} height={300} onOpen={open} /></div>
 
@@ -348,7 +367,7 @@ export default function Home() {
             </div>
           </>
         )}
-        <p className="foot">{data ? `${data.boardName} · ${total} jobs · refreshes every 5 minutes · v4` : ""}</p>
+        <p className="foot">{data ? `${data.boardName} · ${total} jobs · refreshes every 5 minutes · v5` : ""}</p>
       </main>
       {view && data && <Drawer view={view} items={data.items} onClose={() => setView(null)} />}
     </>
