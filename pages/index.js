@@ -8,7 +8,9 @@ const pct = (v, t) => (t ? `${Math.round((v / t) * 1000) / 10}%` : "0%");
 const fmtDate = (s) => (s ? new Date(`${String(s).slice(0, 10)}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–");
 const csvCell = (v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 
-const needsInfo = (it) => /^needs/i.test(String(it.detailsComplete || "").trim());
+// Jobs in an "Installed" group are old/imported sites - missing info there is ignored.
+const isInstalledGroup = (it) => /installed/i.test(String(it.group || ""));
+const needsInfo = (it) => !isInstalledGroup(it) && /^needs/i.test(String(it.detailsComplete || "").trim());
 const BOARD_URL = "https://vita-mojo-team.monday.com/boards/18432365825/pulses/";
 
 function downloadCsv(rows, name) {
@@ -232,7 +234,7 @@ function Drawer({ view, items, onClose }) {
             <tbody>
               {rows.map((i) => (
                 <tr key={i.id}>
-                  <td><b>{i.name}</b>{/^needs/i.test(i.detailsComplete) && <div className="miss">{i.detailsComplete}</div>}</td>
+                  <td><b>{i.name}</b>{needsInfo(i) && <div className="miss">{i.detailsComplete}</div>}</td>
                   <td>{i.group}</td>
                   <td>{i.bookingStatus ? <span className="pill" style={{ borderColor: colorFor(i.bookingStatus) }}>{i.bookingStatus}</span> : "–"}</td>
                   <td>{fmtDate(i.installDate)}</td>
@@ -346,7 +348,7 @@ export default function Home() {
             </div>
           </>
         )}
-        <p className="foot">{data ? `${data.boardName} · ${total} jobs · refreshes every 5 minutes · v3` : ""}</p>
+        <p className="foot">{data ? `${data.boardName} · ${total} jobs · refreshes every 5 minutes · v4` : ""}</p>
       </main>
       {view && data && <Drawer view={view} items={data.items} onClose={() => setView(null)} />}
     </>
