@@ -139,26 +139,17 @@ button { font: inherit; color: inherit; }
 .skeleton { height: 108px; border-radius: var(--radius); background: linear-gradient(90deg, var(--panel) 25%, var(--panel-alt) 50%, var(--panel) 75%); background-size: 200% 100%; animation: sk 1.3s infinite; }
 @keyframes sk { to { background-position: -200% 0; } }
 
-@media (max-width: 1100px) { .g-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); } .g-apex { grid-template-columns: 1fr; } .g2 { grid-template-columns: 1fr; } }
-@media (max-width: 560px) { .divider, .logo.vm { display: none; } .g-hero { grid-template-columns: 1fr; } .tile .tn { font-size: 2.2rem; } }
-.print-only { display: none; }
-@page { size: A3 portrait; margin: 8mm; }
-@media print {
-  :root { --bg: #fff; --bg2: #f6f7f9; --panel: #fff; --panel-alt: #eef0f3; --border: #dfe3e8; --border-strong: #cfd5dc; --ink: #111; --ink-soft: #4a525c; --ink-faint: #6b737d; }
-  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  html, body { background: #fff !important; color: #111; }
-  .topbar { position: static; background: #0a0c10; backdrop-filter: none; border-radius: 10px; }
-  .topbar, .topbar .sub, .topbar h1 { color: #f2f4f6; }
-  .topbar .controls .btn, .scrim, .drawer, .dot { display: none !important; }
-  .main { padding: 10px 0 0; max-width: none; }
-  .tile, .panel { break-inside: avoid; box-shadow: none !important; transform: none !important; background: #fff; }
-  .section { break-after: avoid; }
-  .tile .tn, .panel h3, .lg, .lg b, .pct-big, .tile.hot .tn { color: #111; }
-  .tile.hot .tn { color: var(--c); }
-  svg text { fill: #111 !important; }
-  svg line { stroke: #e3e6ea !important; }
-  .cell { min-height: 70px; }
-  .cell.out { opacity: 0.4; }
-  .print-only { display: block; }
-  .foot { margin-top: 10px; }
-}
+@media screen and (max-width: 1100px) { .g-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); } .g-apex { grid-template-columns: 1fr; } .g2 { grid-template-columns: 1fr; } }
+@media screen and (max-width: 560px) { .divider, .logo.vm { display: none; } .g-hero { grid-template-columns: 1fr; } .tile .tn { font-size: 2.2rem; } }
+/* ---- PDF export: same look as the screen ---- */
+html.pdf-mode, html.pdf-mode body { background: var(--bg); background-attachment: scroll; }
+html.pdf-mode body { width: 1600px; min-width: 1600px; margin: 0; }
+html.pdf-mode * { -webkit-print-color-adjust: exact; print-color-adjust: exact; animation: none !important; }
+html.pdf-mode .topbar { position: static; backdrop-filter: none; }
+html.pdf-mode .topbar .controls .btn, html.pdf-mode .actions, html.pdf-mode .scrim, html.pdf-mode .drawer, html.pdf-mode .dot { display: none !important; }
+html.pdf-mode .tile, html.pdf-mode .panel { break-inside: avoid; transform: none !important; }
+html.pdf-mode .g-hero { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+html.pdf-mode .g-apex { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+html.pdf-mode .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+html.pdf-mode .topbar-inner, html.pdf-mode .main { max-width: none; }
+@media print { * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

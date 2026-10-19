@@ -33,12 +33,28 @@ function exportNeedsInfo(items) {
   downloadCsv(out, `brain-needs-info-${new Date().toLocaleDateString("sv-SE")}.csv`);
 }
 
-function exportPdf() {
-  const prev = document.title;
+// PDF = exactly what's on screen: dark theme, desktop layout, one continuous
+// page sized to the content (like the Monday PDF). The browser's print dialog
+// does the saving ("Save as PDF").
+const PDF_WIDTH = 1600;
+function preparePdf() {
+  const root = document.documentElement;
+  root.classList.add("pdf-mode");
+  const style = document.createElement("style");
+  document.head.appendChild(style);
+  const height = Math.ceil(Math.max(document.body.scrollHeight, root.scrollHeight)) + 2;
+  style.textContent = `@page { size: ${PDF_WIDTH}px ${height}px; margin: 0; }`;
+  const prevTitle = document.title;
   document.title = `The Brain - Management Dashboard ${new Date().toLocaleDateString("sv-SE")}`;
-  const restore = () => { document.title = prev; window.removeEventListener("afterprint", restore); };
-  window.addEventListener("afterprint", restore);
-  window.print();
+  return () => { root.classList.remove("pdf-mode"); style.remove(); document.title = prevTitle; };
+}
+if (typeof window !== "undefined") window.__brainPreparePdf = preparePdf;
+
+function exportPdf() {
+  const cleanup = preparePdf();
+  const done = () => { cleanup(); window.removeEventListener("afterprint", done); };
+  window.addEventListener("afterprint", done);
+  setTimeout(() => window.print(), 150);
 }
 
 function Tile({ t, total, onOpen }) {
@@ -367,7 +383,7 @@ export default function Home() {
             </div>
           </>
         )}
-        <p className="foot">{data ? `${data.boardName} · ${total} jobs · refreshes every 5 minutes · v5` : ""}</p>
+        <p className="foot">{data ? `${data.boardName} · ${total} jobs · refreshes every 5 minutes · v6` : ""}</p>
       </main>
       {view && data && <Drawer view={view} items={data.items} onClose={() => setView(null)} />}
     </>
